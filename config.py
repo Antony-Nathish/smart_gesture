@@ -1,102 +1,71 @@
 """
-config.py — Central configuration for the Gesture Mouse system.
-All tunable parameters live here. Edit this file to calibrate the system.
+config.py
+---------
+Central configuration for the gesture-controlled virtual mouse.
+
+Tweak the values below to tune sensitivity, smoothing, gesture thresholds,
+camera settings and UI behaviour without touching the rest of the code.
 """
 
-# ─────────────────────────────────────────────
-# Camera
-# ─────────────────────────────────────────────
-CAMERA_INDEX = 0          # Webcam index (0 = built-in, 1 = external)
-CAMERA_WIDTH = 640        # Capture width in pixels
-CAMERA_HEIGHT = 480       # Capture height in pixels
-TARGET_FPS = 30           # Desired capture frame rate
+# ---------------------------------------------------------------------------
+# Camera Settings
+# ---------------------------------------------------------------------------
+CAMERA_INDEX = 0          # 0 = default webcam, 1+ = additional cameras
+CAMERA_WIDTH = 640        # Lower = faster processing, higher = more precision
+CAMERA_HEIGHT = 480
+CAMERA_FPS = 30           # Requested FPS from the camera driver
 
-# ─────────────────────────────────────────────
-# Hand Tracking (MediaPipe)
-# ─────────────────────────────────────────────
-MAX_HANDS = 1                       # Track only the first hand for simplicity
-DETECTION_CONFIDENCE = 0.7          # Minimum detection confidence [0-1]
-TRACKING_CONFIDENCE = 0.5           # Minimum tracking confidence [0-1]
+# Pixels of "dead zone" around the camera frame that are ignored.
+# A larger reduction means a smaller hand-movement area maps to the full
+# screen, increasing effective sensitivity.
+FRAME_REDUCTION = 100
 
-# ─────────────────────────────────────────────
-# Active Region (fraction of frame)
-# The system maps only this sub-region of the camera frame to the full screen.
-# Values are fractions: 0.0 = left/top edge, 1.0 = right/bottom edge.
-# Shrinking this region means smaller hand movement → larger cursor travel.
-# ─────────────────────────────────────────────
-ACTIVE_REGION_X1 = 0.10   # Left boundary   (fraction of frame width)
-ACTIVE_REGION_X2 = 0.90   # Right boundary
-ACTIVE_REGION_Y1 = 0.10   # Top boundary    (fraction of frame height)
-ACTIVE_REGION_Y2 = 0.90   # Bottom boundary
+# ---------------------------------------------------------------------------
+# MediaPipe Hand Detection
+# ---------------------------------------------------------------------------
+MAX_NUM_HANDS = 1
+MIN_DETECTION_CONFIDENCE = 0.7
+MIN_TRACKING_CONFIDENCE = 0.5
+MODEL_COMPLEXITY = 1      # 0 = fastest, 1 = balanced
 
-# ─────────────────────────────────────────────
-# Cursor Movement
-# ─────────────────────────────────────────────
-# Smoothing: 0 = raw (jittery), 1 = frozen. Recommended: 0.55–0.75
-CURSOR_SMOOTHING = 0.65
+# ---------------------------------------------------------------------------
+# Cursor Control
+# ---------------------------------------------------------------------------
+# Smoothing factor for cursor movement (exponential smoothing).
+#   1.0 -> no smoothing (instant, jittery)
+#   0.0 -> infinite smoothing (frozen)
+# 0.3 - 0.6 is usually the sweet spot.
+SMOOTHING_FACTOR = 0.4
 
-# Dead zone: ignore movements smaller than this many pixels (screen coords).
-# Increase to reduce micro-jitter when the hand is still.
-CURSOR_DEAD_ZONE = 4
+# Sensitivity multiplier applied around the screen centre. Use values > 1
+# to amplify hand motion, < 1 to dampen it.
+CURSOR_SENSITIVITY = 1.0
 
-# Adaptive filter: if the raw jump exceeds this distance (screen pixels)
-# in one frame, the smoothing factor is temporarily reduced so the cursor
-# can catch up quickly without a "rubber-band" lag.
-CURSOR_JUMP_THRESHOLD = 120
-CURSOR_JUMP_SMOOTHING = 0.20   # Smoothing used during fast movements
+# ---------------------------------------------------------------------------
+# Gesture Thresholds (in pixels, measured in the camera frame)
+# ---------------------------------------------------------------------------
+PINCH_THRESHOLD = 40            # Thumb-index distance below this -> pinch
+RIGHT_CLICK_THRESHOLD = 40      # Thumb-middle distance below this -> r-click
+SCROLL_DEAD_ZONE = 6            # Min vertical pixels of movement to scroll
+SCROLL_SENSITIVITY = 8          # Higher = slower scroll
 
-# ─────────────────────────────────────────────
-# Gesture Thresholds
-# All distances are normalised (relative to hand size / image diagonal).
-# ─────────────────────────────────────────────
+# Distance from index-finger MCP that the thumb tip must exceed for the
+# thumb to be considered "extended" (used in finger-up detection).
+THUMB_EXTENDED_DISTANCE = 60
 
-# Pinch: thumb ↔ index  →  LEFT CLICK
-PINCH_LEFT_ACTIVATE   = 0.045   # Distance to trigger click
-PINCH_LEFT_RELEASE    = 0.065   # Distance to release click state
+# ---------------------------------------------------------------------------
+# Debounce / Timing (seconds)
+# ---------------------------------------------------------------------------
+CLICK_DEBOUNCE = 0.30           # Min interval between clicks
+RIGHT_CLICK_DEBOUNCE = 0.45     # Min interval between right-clicks
+DRAG_HOLD_TIME = 0.30           # Pinch held longer than this -> drag
 
-# Pinch: thumb ↔ middle →  RIGHT CLICK
-PINCH_RIGHT_ACTIVATE  = 0.045
-PINCH_RIGHT_RELEASE   = 0.065
-
-# Double-click: two left-pinch actions within this time window (seconds)
-DOUBLE_CLICK_WINDOW   = 0.40
-
-# Drag: activate when left-pinch is held longer than this (seconds)
-DRAG_HOLD_DELAY       = 0.60    # Hold left-pinch for 0.6 s to enter drag mode
-
-# Scroll: four or five fingers extended trigger scroll mode
-# Number of extended fingers required  (4 or 5)
-SCROLL_FINGER_COUNT   = 4
-
-# Scroll sensitivity: multiplier applied to vertical hand velocity
-SCROLL_SENSITIVITY    = 1.2
-
-# Minimum vertical delta (normalised) to register a scroll step
-SCROLL_DEAD_ZONE      = 0.008
-
-# Click / drag cooldown (seconds) – prevents repeated triggers
-CLICK_COOLDOWN        = 0.25
-
-# ─────────────────────────────────────────────
-# Keyboard Shortcuts
-# ─────────────────────────────────────────────
-TOGGLE_KEY   = "f8"    # Toggle gesture control ON/OFF
-EXIT_KEY     = "esc"   # Exit application
-
-# ─────────────────────────────────────────────
-# Debug / Logging
-# ─────────────────────────────────────────────
-DEBUG_MODE = True          # Show landmark overlay and status text in preview
-LOG_LEVEL  = "INFO"        # "DEBUG", "INFO", "WARNING", "ERROR"
-
-# ─────────────────────────────────────────────
-# Beep notifications (Windows only)
-# ─────────────────────────────────────────────
-BEEP_ON  = (880, 120)   # (frequency Hz, duration ms) when gesture control enabled
-BEEP_OFF = (440, 120)   # when gesture control disabled
-
-# ─────────────────────────────────────────────
-# UI
-# ─────────────────────────────────────────────
-UI_WINDOW_TITLE = "Gesture Mouse — Control Panel"
-PREVIEW_SCALE   = 1.0     # Scale factor for the OpenCV debug window (1.0 = native)
+# ---------------------------------------------------------------------------
+# UI Settings
+# ---------------------------------------------------------------------------
+SHOW_FPS = True
+SHOW_LANDMARKS = True
+SHOW_ACTIVE_AREA = True
+SHOW_GESTURE_TEXT = True
+WINDOW_NAME = "Gesture Mouse Control"
+EXIT_KEY = "q"

@@ -1,139 +1,150 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal EnableExtensions
+title Gesture-Cursor Launcher
+
+REM Always run from the folder containing this batch file.
 cd /d "%~dp0"
 
 echo.
-echo ====================================
-echo   Gesture-Controlled Mouse
-echo ====================================
+echo ==========================================
+echo        GESTURE-CURSOR - WINDOWS LAUNCHER
+echo ==========================================
 echo.
 
-REM ── 1. Locate Python ──────────────────────────────────────────────────────
-set "PYTHON_EXE=python"
-where python >nul 2>&1
-if errorlevel 1 (
-    echo ERROR: Python was not found on PATH.
-    echo        Install Python 3.9-3.13 from https://www.python.org/downloads/
-    echo        and ensure "Add Python to PATH" is checked during installation.
+REM Prefer an existing project virtual environment.
+set "VENV_PY=%~dp0.venv\Scripts\python.exe"
+
+if exist "%VENV_PY%" goto :venv_ready
+
+echo [INFO] No project virtual environment was found.
+echo [INFO] Looking for Python 3.12...
+
+set "BASE_PY="
+
+REM First try the Windows Python Launcher.
+where py >nul 2>nul
+if not errorlevel 1 (
+    py -3.12 -c "import sys; sys.exit(0 if sys.version_info[:2] == (3,12) else 1)" >nul 2>nul
+    if not errorlevel 1 (
+        for /f "delims=" %%P in ('py -3.12 -c "import sys; print(sys.executable)"') do set "BASE_PY=%%P"
+    )
+)
+
+REM If the launcher is unavailable, check the python command.
+if not defined BASE_PY (
+    where python >nul 2>nul
+    if not errorlevel 1 (
+        python -c "import sys; sys.exit(0 if sys.version_info[:2] == (3,12) else 1)" >nul 2>nul
+        if not errorlevel 1 (
+            for /f "delims=" %%P in ('python -c "import sys; print(sys.executable)"') do set "BASE_PY=%%P"
+        )
+    )
+)
+
+REM Check common per-user and system-wide Python 3.12 install locations.
+if not defined BASE_PY if exist "%LocalAppData%\Programs\Python\Python312\python.exe" set "BASE_PY=%LocalAppData%\Programs\Python\Python312\python.exe"
+if not defined BASE_PY if exist "%ProgramFiles%\Python312\python.exe" set "BASE_PY=%ProgramFiles%\Python312\python.exe"
+
+if not defined BASE_PY (
+    echo [ERROR] Python 3.12 was not found.
+    echo Install Python 3.12 (64-bit), then run this file again.
+    echo You do not need to uninstall Python 3.13.
     echo.
     pause
     exit /b 1
 )
 
-REM ── 2. Create virtual environment if missing ───────────────────────────────
-if not exist ".venv\Scripts\python.exe" (
-    echo [SETUP] Creating virtual environment in .venv ...
-    %PYTHON_EXE% -m venv .venv
+echo [INFO] Using: "%BASE_PY%"
+echo [INFO] Creating .venv...
+"%BASE_PY%" -m venv "%~dp0.venv"
+if errorlevel 1 (
+    echo [ERROR] Could not create the virtual environment.
+    pause
+    exit /b 1
+)
+
+set "VENV_PY=%~dp0.venv\Scripts\python.exe"
+
+:venv_ready
+if not exist "%VENV_PY%" (
+    echo [ERROR] Virtual environment Python was not found:
+    echo "%VENV_PY%"
+    pause
+    exit /b 1
+)
+
+echo [INFO] Active project interpreter:
+"%VENV_PY%" --version
+if errorlevel 1 (
+    echo [ERROR] The virtual environment Python could not start.
+    pause
+    exit /b 1
+)
+
+if not exist "%~dp0requirements.txt" (
+    echo [ERROR] requirements.txt was not found in this project folder.
+    pause
+    exit /b 1
+)
+
+echo.
+echo [1/3] Checking pip...
+"%VENV_PY%" -m pip --version
+if errorlevel 1 (
+    echo [INFO] Bootstrapping pip...
+    "%VENV_PY%" -m ensurepip --upgrade
     if errorlevel 1 (
-        echo.
-        echo ERROR: Failed to create virtual environment.
-        echo        Make sure the 'venv' module is available for your Python install.
-        echo.
+        echo [ERROR] pip could not be installed in the virtual environment.
         pause
         exit /b 1
     )
-    echo [SETUP] Virtual environment created.
-    REM Remove any stale stamp so dependencies are installed fresh
-    if exist ".venv_ready" del /f /q ".venv_ready"
 )
 
-set "VENV_PYTHON=.venv\Scripts\python.exe"
-set "VENV_PIP=.venv\Scripts\pip.exe"
-
-REM ── 3. Activate the virtual environment ───────────────────────────────────
-call ".venv\Scripts\activate.bat"
+echo.
+echo [2/3] Installing or checking project dependencies...
+echo Missing packages will be installed. Already satisfied packages are kept.
+"%VENV_PY%" -m pip install -r "%~dp0requirements.txt" --prefer-binary --timeout 120 --retries 10
 if errorlevel 1 (
     echo.
-    echo ERROR: Failed to activate virtual environment.
-    echo        Try deleting the .venv folder and re-running this script.
-    echo.
+    echo [ERROR] Dependency installation failed.
+    echo Check your internet connection and the error shown above.
+    echo Then run this file again.
     pause
     exit /b 1
 )
 
-REM ── 4. Smart dependency install ────────────────────────────────────────────
-REM  We write a stamp file ".venv_ready" after a successful install.
-REM  We compare its timestamp to requirements.txt; if requirements.txt is
-REM  newer the stamp is stale and we reinstall.  This avoids a full pip run
-REM  on every launch once the environment is configured.
-
-set "NEED_INSTALL=0"
-
-if not exist ".venv_ready" (
-    set "NEED_INSTALL=1"
-    echo [SETUP] No installation stamp found -- will install dependencies.
-) else (
-    REM Check whether requirements.txt is newer than the stamp file.
-    REM  xcopy /d copies only if source is newer; redirect output to NUL.
-    REM  Exit code 0 = nothing copied (stamp is up-to-date).
-    REM  Exit code 1 = requirements.txt is newer (needs reinstall).
-    xcopy /d /y /i "requirements.txt" ".venv_ready_check_tmp\" >nul 2>&1
-    if errorlevel 1 (
-        set "NEED_INSTALL=1"
-        echo [SETUP] requirements.txt has changed -- reinstalling dependencies.
-    )
-    if exist ".venv_ready_check_tmp" rmdir /s /q ".venv_ready_check_tmp" >nul 2>&1
-)
-
-if "!NEED_INSTALL!"=="1" (
-    REM Upgrade pip silently first
-    echo [SETUP] Upgrading pip...
-    %VENV_PYTHON% -m pip install --upgrade pip --quiet
-    if errorlevel 1 (
-        echo WARNING: pip upgrade failed -- continuing with existing pip version.
-    )
-
-    if exist "requirements.txt" (
-        echo [SETUP] Installing packages from requirements.txt ...
-        %VENV_PYTHON% -m pip install -r requirements.txt
-    ) else (
-        echo [SETUP] requirements.txt not found -- installing core packages ...
-        %VENV_PYTHON% -m pip install opencv-python mediapipe pyautogui numpy Pillow keyboard
-    )
-
-    if errorlevel 1 (
-        echo.
-        echo ERROR: Dependency installation failed.
-        echo        Check your internet connection and try again.
-        echo        If the problem persists, run:
-        echo            .venv\Scripts\pip install -r requirements.txt
-        echo        to see the full error output.
-        echo.
-        pause
-        exit /b 1
-    )
-
-    REM Write the stamp file (its timestamp marks when install last succeeded)
-    echo %date% %time% > ".venv_ready"
-    echo [SETUP] Dependencies installed successfully.
-) else (
-    echo [INFO] Dependencies are up-to-date (delete .venv_ready to force reinstall).
-)
-
 echo.
-
-REM ── 5. Verify main.py exists ───────────────────────────────────────────────
-if not exist "main.py" (
-    echo ERROR: main.py was not found in:
-    echo        %CD%
-    echo        Make sure run.bat is placed in the gesture_mouse\ folder.
-    echo.
+echo [3/3] Checking installed dependencies...
+"%VENV_PY%" -m pip check
+if errorlevel 1 (
+    echo [ERROR] Dependency conflicts were reported.
     pause
     exit /b 1
 )
 
-REM ── 6. Launch the application ─────────────────────────────────────────────
-echo [INFO] Starting Gesture Mouse...
-echo [INFO] Press F8 in the preview window to toggle control.
-echo [INFO] Press ESC or Q to quit.
-echo.
-
-%VENV_PYTHON% main.py
+if not exist "%~dp0main.py" (
+    echo [ERROR] main.py was not found in the project folder.
+    pause
+    exit /b 1
+)
 
 echo.
-echo ====================================
-echo   Application exited.
-echo ====================================
+echo ==========================================
+echo Starting Gesture-Cursor...
+echo Close the gesture application normally to return here.
+echo ==========================================
+echo.
+
+"%VENV_PY%" "%~dp0main.py"
+set "APP_EXIT=%ERRORLEVEL%"
+
+echo.
+if not "%APP_EXIT%"=="0" (
+    echo [WARNING] The application exited with code %APP_EXIT%.
+    echo Review the error output above.
+) else (
+    echo [INFO] Gesture-Cursor has closed.
+)
 echo.
 pause
-endlocal
+exit /b %APP_EXIT%
