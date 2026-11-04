@@ -1,6 +1,10 @@
-mediapipe>=0.10.0
 opencv-python>=4.8.0
+# Pinned to 0.10.21 deliberately:
+#   * 0.10.22+ removed mp.solutions (which this project uses)
+#   * 0.10.30+ has a Windows ctypes "free not found" regression
+# This pin only has wheels for Python 3.9 - 3.12; install Python 3.12 if you
+# don't already have it (see README).
+mediapipe==0.10.21
 pyautogui>=0.9.54
-numpy>=1.24.0
-keyboard>=0.13.5
-Pillow>=9.0.0
+# mediapipe 0.10.21 is built against the NumPy 1.x ABI.
+numpy>=1.23.0,<2.0
