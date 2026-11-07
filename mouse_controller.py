@@ -56,3 +56,10 @@ class MouseController:
         if amount == 0:
             return
         pyautogui.scroll(int(amount), _pause=False)
+
+    def page_scroll(self, direction):
+        """Scroll one page using keyboard Page Up / Page Down."""
+        if direction == "up":
+            pyautogui.press("pageup", _pause=False)
+        elif direction == "down":
+            pyautogui.press("pagedown", _pause=False)

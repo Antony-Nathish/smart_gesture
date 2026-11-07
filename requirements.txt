@@ -1,3 +1,4 @@
+# Supported Python: 3.9-3.12. The Windows setup uses Python 3.12.
 opencv-python>=4.8.0
 # Pinned to 0.10.21 deliberately:
 #   * 0.10.22+ removed mp.solutions (which this project uses)
@@ -8,3 +9,6 @@ mediapipe==0.10.21
 pyautogui>=0.9.54
 # mediapipe 0.10.21 is built against the NumPy 1.x ABI.
 numpy>=1.23.0,<2.0
+
+# Dashboard camera preview
+Pillow>=10.0

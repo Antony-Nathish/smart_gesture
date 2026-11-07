@@ -69,3 +69,7 @@ SHOW_ACTIVE_AREA = True
 SHOW_GESTURE_TEXT = True
 WINDOW_NAME = "Gesture Mouse Control"
 EXIT_KEY = "q"
+
+# Distance-based page scrolling
+SCROLL_TRIGGER_DISTANCE = 70  # Camera pixels
+SCROLL_COOLDOWN = 0.35        # Seconds between page actions

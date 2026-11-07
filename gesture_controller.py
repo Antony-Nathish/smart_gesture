@@ -49,6 +49,7 @@ class GestureController:
     STATE_CURSOR = "CURSOR"
     STATE_PINCH_DOWN = "PINCH"
     STATE_DRAGGING = "DRAG"
+    STATE_RIGHT_CLICK = "RIGHT CLICK"
     STATE_SCROLLING = "SCROLL"
 
     def __init__(self, mouse, cam_w, cam_h):
@@ -71,6 +72,9 @@ class GestureController:
 
         # Diagnostics for the HUD
         self.last_action = "Idle"
+
+        self._scroll_anchor_y = None
+        self._last_scroll_time = 0.0
 
     # =====================================================================
     #                       Finger / gesture detection
@@ -159,15 +163,16 @@ class GestureController:
         middle_tip = landmarks[HandTracker.MIDDLE_TIP]
 
         pinch_dist = euclidean(thumb_tip, index_tip)
-        right_click_dist = euclidean(thumb_tip, middle_tip)
+        thumb_middle_dist = euclidean(thumb_tip, middle_tip)
+        index_middle_dist = euclidean(index_tip, middle_tip)
         now = time.time()
 
         # Classify the *intent* of this frame in priority order.
         is_pinch = pinch_dist < config.PINCH_THRESHOLD
-        is_right_click = (
-            not is_pinch
-            and fingers[2] == 1
-            and right_click_dist < config.RIGHT_CLICK_THRESHOLD
+        is_right_click_pinch = (
+            is_pinch
+            and thumb_middle_dist < config.RIGHT_CLICK_THRESHOLD
+            and index_middle_dist < config.RIGHT_CLICK_THRESHOLD
         )
         is_scroll = (
             not is_pinch
@@ -180,6 +185,25 @@ class GestureController:
             and fingers[1] == 1
             and fingers[2] == 0
         )
+
+        # A three-finger pinch takes priority over the ordinary thumb-index
+        # pinch and remains latched until the thumb-index pinch is released.
+        if self.state == self.STATE_RIGHT_CLICK:
+            if is_pinch:
+                self.last_action = "Right Click"
+                return
+            self.state = self.STATE_IDLE
+
+        if is_right_click_pinch:
+            if self.state == self.STATE_DRAGGING:
+                self.mouse.mouse_up()
+            self.state = self.STATE_RIGHT_CLICK
+            self._pinch_start_time = None
+            if now - self._last_right_click_time > config.RIGHT_CLICK_DEBOUNCE:
+                self.mouse.right_click()
+                self._last_right_click_time = now
+            self.last_action = "Right Click"
+            return
 
         # ------------------------------------------------------------------
         # PINCH (potential click or drag)
@@ -236,36 +260,37 @@ class GestureController:
         # ------------------------------------------------------------------
         # SCROLL
         # ------------------------------------------------------------------
+        # ---------------------------------------------------------
+        # DISTANCE-BASED PAGE SCROLL
+        # ---------------------------------------------------------
         if is_scroll:
+
             if self.state != self.STATE_SCROLLING:
                 self._scroll_anchor_y = index_tip[1]
                 self.state = self.STATE_SCROLLING
                 self.last_action = "Scroll Ready"
+
             else:
                 delta_y = index_tip[1] - self._scroll_anchor_y
-                if abs(delta_y) > config.SCROLL_DEAD_ZONE:
-                    # Camera Y grows downward; scroll up when finger moves up.
-                    self.mouse.scroll(int(-delta_y / config.SCROLL_SENSITIVITY))
-                    self._scroll_anchor_y = index_tip[1]
-                    self.last_action = (
-                        "Scrolling Up" if delta_y < 0 else "Scrolling Down"
-                    )
-            return
 
+                if abs(delta_y) >= config.SCROLL_TRIGGER_DISTANCE:
+
+                    if now - self._last_scroll_time >= config.SCROLL_COOLDOWN:
+
+                        if delta_y < 0:
+                            self.mouse.page_scroll("up")
+                            self.last_action = "Page Up"
+                        else:
+                            self.mouse.page_scroll("down")
+                            self.last_action = "Page Down"
+
+                        self._scroll_anchor_y = index_tip[1]
+                        self._last_scroll_time = now
+
+            return
         # We left scroll mode; clear the anchor.
         if self.state == self.STATE_SCROLLING:
             self._scroll_anchor_y = None
-
-        # ------------------------------------------------------------------
-        # RIGHT CLICK (thumb + middle pinch)
-        # ------------------------------------------------------------------
-        if is_right_click:
-            if now - self._last_right_click_time > config.RIGHT_CLICK_DEBOUNCE:
-                self.mouse.right_click()
-                self._last_right_click_time = now
-                self.last_action = "Right Click"
-            self.state = self.STATE_IDLE
-            return
 
         # ------------------------------------------------------------------
         # CURSOR MOVE (index only)
