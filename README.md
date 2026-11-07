@@ -1,4 +1,4 @@
-# SMART GESTURE
+# SMART GESTURE 🤚
 ### Hand Gesture Controlled Desktop Application
 
 Control your computer using natural hand movements with real-time computer vision and hand tracking.
